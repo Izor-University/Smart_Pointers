@@ -1,8 +1,9 @@
 #include <iostream>
 #include <chrono>
 #include <iomanip>
-#include <vector>
-#include <memory> // Для сравнения с std:: смарт-указателями
+#include <memory>
+#include <cstdlib>
+#include <new>
 
 #include "UniquePtr.hpp"
 #include "SharedPtr.hpp"
@@ -11,165 +12,273 @@
 using namespace std;
 using namespace std::chrono;
 
-// Вспомогательная структура для хранения результатов замеров
+// ============================================================================
+// GLOBAL MEMORY TRACKER
+// ============================================================================
+static size_t g_memory_allocated = 0;
+
+void* operator new(size_t size) {
+    g_memory_allocated += size;
+    void* ptr = std::malloc(size);
+    if (!ptr) throw std::bad_alloc();
+    return ptr;
+}
+
+void operator delete(void* ptr) noexcept {
+    std::free(ptr);
+}
+
+void operator delete(void* ptr, size_t /*size*/) noexcept {
+    std::free(ptr);
+}
+
+// ============================================================================
+// BENCHMARK STRUCTURES
+// ============================================================================
 struct BenchmarkResult {
-    double rawPtrTime = 0.0;
-    double stdPtrTime = 0.0;
-    double customPtrTime = 0.0;
+    double timeMs = 0.0;
+    size_t memoryBytes = 0;
 };
 
-// --- НАГРУЗОЧНОЕ ТЕСТИРОВАНИЕ UNIQUE PTR ---
-BenchmarkResult RunUniqueBenchmark(size_t iterations) {
-    BenchmarkResult result;
+struct TestSuiteResult {
+    BenchmarkResult rawPtr;
+    BenchmarkResult stdPtr;
+    BenchmarkResult customPtr;
+};
 
-    // 1. Тест сырых указателей (Raw Pointer)
+// ============================================================================
+// UNIQUE POINTER BENCHMARKS
+// ============================================================================
+TestSuiteResult RunUniqueBenchmark(size_t iterations) {
+    TestSuiteResult results;
+
+    // 1. Raw Pointer Test
     {
+        // Allocate storage array FIRST, so it doesn't affect our memory tracking
+        int** arr = new int*[iterations];
+
+        size_t memBefore = g_memory_allocated;
         auto start = high_resolution_clock::now();
-        vector<int*> rawPtrs;
-        rawPtrs.reserve(iterations);
+
         for (size_t i = 0; i < iterations; ++i) {
-            rawPtrs.push_back(new int(i));
+            arr[i] = new int(i);
         }
-        for (size_t i = 0; i < iterations; ++i) {
-            delete rawPtrs[i];
-        }
+
         auto end = high_resolution_clock::now();
-        result.rawPtrTime = duration<double, milli>(end - start).count();
+        size_t memAfter = g_memory_allocated;
+
+        results.rawPtr.timeMs = duration<double, milli>(end - start).count();
+        results.rawPtr.memoryBytes = memAfter - memBefore;
+
+        // Cleanup
+        for (size_t i = 0; i < iterations; ++i) {
+            delete arr[i];
+        }
+        delete[] arr;
     }
 
-    // 2. Тест std::unique_ptr
+    // 2. std::unique_ptr Test
     {
+        std::unique_ptr<int>* arr = new std::unique_ptr<int>[iterations];
+
+        size_t memBefore = g_memory_allocated;
         auto start = high_resolution_clock::now();
-        vector<std::unique_ptr<int>> stdPtrs;
-        stdPtrs.reserve(iterations);
+
         for (size_t i = 0; i < iterations; ++i) {
-            stdPtrs.push_back(std::make_unique<int>(i));
+            arr[i] = std::make_unique<int>(i);
         }
-        // Удаление происходит автоматически при выходе из блока
+
         auto end = high_resolution_clock::now();
-        result.stdPtrTime = duration<double, milli>(end - start).count();
+        size_t memAfter = g_memory_allocated;
+
+        results.stdPtr.timeMs = duration<double, milli>(end - start).count();
+        results.stdPtr.memoryBytes = memAfter - memBefore;
+
+        delete[] arr;
     }
 
-    // 3. Тест нашего UniquePtr
+    // 3. Custom UniquePtr Test
     {
+        UniquePtr<int>* arr = new UniquePtr<int>[iterations];
+
+        size_t memBefore = g_memory_allocated;
         auto start = high_resolution_clock::now();
-        vector<UniquePtr<int>> customPtrs;
-        customPtrs.reserve(iterations);
+
         for (size_t i = 0; i < iterations; ++i) {
-            customPtrs.push_back(UniquePtr<int>(new int(i)));
+            arr[i] = UniquePtr<int>(new int(i));
         }
-        // Удаление происходит автоматически при выходе из блока
+
         auto end = high_resolution_clock::now();
-        result.customPtrTime = duration<double, milli>(end - start).count();
+        size_t memAfter = g_memory_allocated;
+
+        results.customPtr.timeMs = duration<double, milli>(end - start).count();
+        results.customPtr.memoryBytes = memAfter - memBefore;
+
+        delete[] arr;
     }
 
-    return result;
+    return results;
 }
 
-// --- НАГРУЗОЧНОЕ ТЕСТИРОВАНИЕ SHARED PTR ---
-BenchmarkResult RunSharedBenchmark(size_t iterations) {
-    BenchmarkResult result;
+// ============================================================================
+// SHARED POINTER BENCHMARKS
+// ============================================================================
+TestSuiteResult RunSharedBenchmark(size_t iterations) {
+    TestSuiteResult results;
 
-    // 1. Тест сырых указателей (Симуляция ручного копирования)
+    // 1. Raw Pointer Test (Simulating shared behavior without ref counting)
     {
+        int** arr = new int*[iterations];
+        int** copies = new int*[iterations];
+
+        size_t memBefore = g_memory_allocated;
         auto start = high_resolution_clock::now();
-        vector<int*> rawPtrs;
-        rawPtrs.reserve(iterations);
+
         for (size_t i = 0; i < iterations; ++i) {
-            rawPtrs.push_back(new int(i));
+            arr[i] = new int(i);
         }
-        // Имитация копирования (без счетчика ссылок, просто передача указателя)
-        vector<int*> copiedPtrs = rawPtrs;
-        
         for (size_t i = 0; i < iterations; ++i) {
-            delete rawPtrs[i]; // Удаляем только оригинал, чтобы избежать double free
+            copies[i] = arr[i]; // Manual copy, zero overhead
         }
+
         auto end = high_resolution_clock::now();
-        result.rawPtrTime = duration<double, milli>(end - start).count();
+        size_t memAfter = g_memory_allocated;
+
+        results.rawPtr.timeMs = duration<double, milli>(end - start).count();
+        results.rawPtr.memoryBytes = memAfter - memBefore;
+
+        for (size_t i = 0; i < iterations; ++i) {
+            delete arr[i];
+        }
+        delete[] arr;
+        delete[] copies;
     }
 
-    // 2. Тест std::shared_ptr (с подсчетом ссылок)
+    // 2. std::shared_ptr Test
     {
+        std::shared_ptr<int>* arr = new std::shared_ptr<int>[iterations];
+        std::shared_ptr<int>* copies = new std::shared_ptr<int>[iterations];
+
+        size_t memBefore = g_memory_allocated;
         auto start = high_resolution_clock::now();
-        vector<std::shared_ptr<int>> stdPtrs;
-        stdPtrs.reserve(iterations);
+
         for (size_t i = 0; i < iterations; ++i) {
-            stdPtrs.push_back(std::make_shared<int>(i));
+            arr[i] = std::make_shared<int>(i);
         }
-        vector<std::shared_ptr<int>> copiedPtrs = stdPtrs; // Увеличивает счетчик
+        for (size_t i = 0; i < iterations; ++i) {
+            copies[i] = arr[i]; // Triggers atomic ref count increment
+        }
+
         auto end = high_resolution_clock::now();
-        result.stdPtrTime = duration<double, milli>(end - start).count();
+        size_t memAfter = g_memory_allocated;
+
+        results.stdPtr.timeMs = duration<double, milli>(end - start).count();
+        results.stdPtr.memoryBytes = memAfter - memBefore;
+
+        delete[] arr;
+        delete[] copies;
     }
 
-    // 3. Тест нашего SharedPtr
+    // 3. Custom SharedPtr Test
     {
+        SharedPtr<int>* arr = new SharedPtr<int>[iterations];
+        SharedPtr<int>* copies = new SharedPtr<int>[iterations];
+
+        size_t memBefore = g_memory_allocated;
         auto start = high_resolution_clock::now();
-        vector<SharedPtr<int>> customPtrs;
-        customPtrs.reserve(iterations);
+
         for (size_t i = 0; i < iterations; ++i) {
-            customPtrs.push_back(SharedPtr<int>(new int(i)));
+            arr[i] = SharedPtr<int>(new int(i));
         }
-        vector<SharedPtr<int>> copiedPtrs = customPtrs; // Увеличивает наш счетчик
+        for (size_t i = 0; i < iterations; ++i) {
+            copies[i] = arr[i]; // Triggers our custom ref count increment
+        }
+
         auto end = high_resolution_clock::now();
-        result.customPtrTime = duration<double, milli>(end - start).count();
+        size_t memAfter = g_memory_allocated;
+
+        results.customPtr.timeMs = duration<double, milli>(end - start).count();
+        results.customPtr.memoryBytes = memAfter - memBefore;
+
+        delete[] arr;
+        delete[] copies;
     }
 
-    return result;
+    return results;
 }
 
-// --- ВЫВОД ТАБЛИЦЫ ---
-void PrintTable(const string& testName, size_t iterations, const BenchmarkResult& res) {
-    cout << "\n===============================================================\n";
-    cout << " Результаты для: " << testName << " | Объектов: " << iterations << "\n";
-    cout << "===============================================================\n";
-    cout << left << setw(25) << "Тип указателя" 
-         << right << setw(20) << "Время (мс)" << "\n";
-    cout << "---------------------------------------------------------------\n";
-    cout << left << setw(25) << "1. Raw Pointer (T*)" 
-         << right << setw(20) << fixed << setprecision(3) << res.rawPtrTime << " ms\n";
-    cout << left << setw(25) << "2. STL (std::)" 
-         << right << setw(20) << fixed << setprecision(3) << res.stdPtrTime << " ms\n";
-    cout << left << setw(25) << "3. Custom Pointer" 
-         << right << setw(20) << fixed << setprecision(3) << res.customPtrTime << " ms\n";
-    cout << "===============================================================\n";
+// ============================================================================
+// CLI INTERFACE & TABLE RENDERING
+// ============================================================================
+void PrintResults(const string& testName, size_t iterations, const TestSuiteResult& res) {
+    auto toMB = [](size_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1024.0); };
+
+    cout << "\n===============================================================================\n";
+    cout << " TEST: " << testName << " | ALLOCATIONS: " << iterations << "\n";
+    cout << "===============================================================================\n";
+    cout << left << setw(25) << "Pointer Type"
+         << right << setw(20) << "Time Executed"
+         << right << setw(30) << "Heap Memory Allocated" << "\n";
+    cout << "-------------------------------------------------------------------------------\n";
+
+    cout << left << setw(25) << "1. Raw Pointer (T*)"
+         << right << setw(17) << fixed << setprecision(2) << res.rawPtr.timeMs << " ms"
+         << right << setw(27) << fixed << setprecision(2) << toMB(res.rawPtr.memoryBytes) << " MB\n";
+
+    cout << left << setw(25) << "2. std:: STL Pointer"
+         << right << setw(17) << fixed << setprecision(2) << res.stdPtr.timeMs << " ms"
+         << right << setw(27) << fixed << setprecision(2) << toMB(res.stdPtr.memoryBytes) << " MB\n";
+
+    cout << left << setw(25) << "3. Custom Ptr"
+         << right << setw(17) << fixed << setprecision(2) << res.customPtr.timeMs << " ms"
+         << right << setw(27) << fixed << setprecision(2) << toMB(res.customPtr.memoryBytes) << " MB\n";
+
+    cout << "===============================================================================\n";
 }
 
-// --- ГЛАВНОЕ МЕНЮ ---
 int main() {
     int choice = 0;
     while (true) {
-        cout << "\n[ МЕНЮ ТЕСТИРОВАНИЯ УМНЫХ УКАЗАТЕЛЕЙ ]\n";
-        cout << "1. Нагрузочный тест UniquePtr (Малое число, 10^4)\n";
-        cout << "2. Нагрузочный тест UniquePtr (Большое число, 10^7)\n";
-        cout << "3. Нагрузочный тест SharedPtr (Малое число, 10^4)\n";
-        cout << "4. Нагрузочный тест SharedPtr (Большое число, 10^7)\n";
-        cout << "5. Выход\n";
-        cout << "Ваш выбор: ";
-        
-        if (!(cin >> choice)) {
-            break;
-        }
+        cout << "\n[ SMART POINTERS PERFORMANCE BENCHMARK ]\n";
+        cout << "1. UniquePtr - Medium Load  (100,000 objects)\n";
+        cout << "2. UniquePtr - Heavy Load   (1,000,000 objects)\n";
+        cout << "3. UniquePtr - Extreme Load (10,000,000 objects)\n";
+        cout << "4. SharedPtr - Medium Load  (100,000 objects)\n";
+        cout << "5. SharedPtr - Heavy Load   (1,000,000 objects)\n";
+        cout << "6. SharedPtr - Extreme Load (10,000,000 objects)\n";
+        cout << "7. Exit\n";
+        cout << "> Select an option: ";
+
+        if (!(cin >> choice)) break;
 
         switch (choice) {
             case 1:
-                PrintTable("UniquePtr (Small Load)", 10'000, RunUniqueBenchmark(10'000));
+                PrintResults("UniquePtr (Medium)", 100'000, RunUniqueBenchmark(100'000));
                 break;
             case 2:
-                cout << "Генерация 10 миллионов объектов, подождите...\n";
-                PrintTable("UniquePtr (Heavy Load)", 10'000'000, RunUniqueBenchmark(10'000'000));
+                cout << "Processing 1 million allocations...\n";
+                PrintResults("UniquePtr (Heavy)", 1'000'000, RunUniqueBenchmark(1'000'000));
                 break;
             case 3:
-                PrintTable("SharedPtr (Small Load)", 10'000, RunSharedBenchmark(10'000));
+                cout << "Processing 10 million allocations, please wait...\n";
+                PrintResults("UniquePtr (Extreme)", 10'000'000, RunUniqueBenchmark(10'000'000));
                 break;
             case 4:
-                cout << "Генерация 10 миллионов объектов, подождите...\n";
-                PrintTable("SharedPtr (Heavy Load)", 10'000'000, RunSharedBenchmark(10'000'000));
+                PrintResults("SharedPtr (Medium)", 100'000, RunSharedBenchmark(100'000));
                 break;
             case 5:
-                cout << "Выход из программы.\n";
+                cout << "Processing 1 million allocations...\n";
+                PrintResults("SharedPtr (Heavy)", 1'000'000, RunSharedBenchmark(1'000'000));
+                break;
+            case 6:
+                cout << "Processing 10 million allocations, please wait...\n";
+                PrintResults("SharedPtr (Extreme)", 10'000'000, RunSharedBenchmark(10'000'000));
+                break;
+            case 7:
+                cout << "Exiting benchmark tool.\n";
                 return 0;
             default:
-                cout << "Неверный выбор, попробуйте снова.\n";
+                cout << "Invalid selection. Try again.\n";
         }
     }
     return 0;

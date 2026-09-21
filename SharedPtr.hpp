@@ -7,7 +7,7 @@ private:
     T* ptr;
     int* refCount;
 
-    template <typename U> friend class SharedPtr; // Для подтипизации
+    template <typename U> friend class SharedPtr;
 
 public:
     SharedPtr(T* p = nullptr) : ptr(p), refCount(new int(1)) {}
@@ -36,7 +36,6 @@ public:
         return *this;
     }
 
-    // Конструктор и оператор перемещения
     SharedPtr(SharedPtr&& other) noexcept
         : ptr(other.ptr), refCount(other.refCount) {
         other.ptr = nullptr;
@@ -57,7 +56,6 @@ public:
         return *this;
     }
 
-    // --- ПОДТИПИЗАЦИЯ ---
     template <typename U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
     SharedPtr(const SharedPtr<U>& other) : ptr(other.ptr), refCount(other.refCount) {
         if (refCount) ++(*refCount);
@@ -105,7 +103,7 @@ private:
     T* ptr;
     int* refCount;
 public:
-    SharedPtr(T* p = nullptr) : ptr(p), refCount(new int(1)) {}
+    SharedPtr(T* p = nullptr) : ptr(p), refCount(p ? new int(1) : nullptr) {}
 
     ~SharedPtr() {
         if (refCount && --(*refCount) == 0) {

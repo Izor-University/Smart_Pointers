@@ -1,12 +1,11 @@
 #pragma once
-#include <type_traits> // Для std::is_convertible_v и std::enable_if_t
+#include <type_traits>
 
 template <typename T>
 class UniquePtr {
 private:
     T* ptr;
 
-    // Делаем все специализации UniquePtr друзьями, чтобы иметь доступ к ptr при подтипизации
     template <typename U> friend class UniquePtr;
 
 public:
@@ -29,7 +28,6 @@ public:
         return *this;
     }
 
-    // --- ПОДТИПИЗАЦИЯ ---
     // Разрешаем перемещение из UniquePtr<U>, только если U* приводится к T* (т.е. U - наследник T)
     template <typename U, typename = std::enable_if_t<std::is_convertible_v<U*, T*>>>
     UniquePtr(UniquePtr<U>&& other) noexcept : ptr(other.ptr) {
@@ -64,7 +62,6 @@ public:
     }
 };
 
-// --- СПЕЦИАЛИЗАЦИЯ ДЛЯ МАССИВОВ ---
 template <typename T>
 class UniquePtr<T[]> {
 private:

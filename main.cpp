@@ -4,20 +4,18 @@
 #include <memory>
 #include <cstdlib>
 #include <new>
+#include <string> // Добавлено для std::string
 
 #include "UniquePtr.hpp"
 #include "SharedPtr.hpp"
 #include "DynamicArray.hpp"
 
-using namespace std;
-using namespace std::chrono;
-
 // ============================================================================
 // GLOBAL MEMORY TRACKER
 // ============================================================================
-static size_t g_memory_allocated = 0;
+static std::size_t g_memory_allocated = 0;
 
-void* operator new(size_t size) {
+void* operator new(std::size_t size) {
     g_memory_allocated += size;
     void* ptr = std::malloc(size);
     if (!ptr) throw std::bad_alloc();
@@ -28,7 +26,7 @@ void operator delete(void* ptr) noexcept {
     std::free(ptr);
 }
 
-void operator delete(void* ptr, size_t /*size*/) noexcept {
+void operator delete(void* ptr, std::size_t /*size*/) noexcept {
     std::free(ptr);
 }
 
@@ -37,7 +35,7 @@ void operator delete(void* ptr, size_t /*size*/) noexcept {
 // ============================================================================
 struct BenchmarkResult {
     double timeMs = 0.0;
-    size_t memoryBytes = 0;
+    std::size_t memoryBytes = 0;
 };
 
 struct TestSuiteResult {
@@ -49,7 +47,7 @@ struct TestSuiteResult {
 // ============================================================================
 // UNIQUE POINTER BENCHMARKS
 // ============================================================================
-TestSuiteResult RunUniqueBenchmark(size_t iterations) {
+TestSuiteResult RunUniqueBenchmark(std::size_t iterations) {
     TestSuiteResult results;
 
     // 1. Raw Pointer Test
@@ -57,21 +55,21 @@ TestSuiteResult RunUniqueBenchmark(size_t iterations) {
         // Allocate storage array FIRST, so it doesn't affect our memory tracking
         int** arr = new int*[iterations];
 
-        size_t memBefore = g_memory_allocated;
-        auto start = high_resolution_clock::now();
+        std::size_t memBefore = g_memory_allocated;
+        auto start = std::chrono::high_resolution_clock::now();
 
-        for (size_t i = 0; i < iterations; ++i) {
+        for (std::size_t i = 0; i < iterations; ++i) {
             arr[i] = new int(i);
         }
 
-        auto end = high_resolution_clock::now();
-        size_t memAfter = g_memory_allocated;
+        auto end = std::chrono::high_resolution_clock::now();
+        std::size_t memAfter = g_memory_allocated;
 
-        results.rawPtr.timeMs = duration<double, milli>(end - start).count();
+        results.rawPtr.timeMs = std::chrono::duration<double, std::milli>(end - start).count();
         results.rawPtr.memoryBytes = memAfter - memBefore;
 
         // Cleanup
-        for (size_t i = 0; i < iterations; ++i) {
+        for (std::size_t i = 0; i < iterations; ++i) {
             delete arr[i];
         }
         delete[] arr;
@@ -81,17 +79,17 @@ TestSuiteResult RunUniqueBenchmark(size_t iterations) {
     {
         std::unique_ptr<int>* arr = new std::unique_ptr<int>[iterations];
 
-        size_t memBefore = g_memory_allocated;
-        auto start = high_resolution_clock::now();
+        std::size_t memBefore = g_memory_allocated;
+        auto start = std::chrono::high_resolution_clock::now();
 
-        for (size_t i = 0; i < iterations; ++i) {
+        for (std::size_t i = 0; i < iterations; ++i) {
             arr[i] = std::make_unique<int>(i);
         }
 
-        auto end = high_resolution_clock::now();
-        size_t memAfter = g_memory_allocated;
+        auto end = std::chrono::high_resolution_clock::now();
+        std::size_t memAfter = g_memory_allocated;
 
-        results.stdPtr.timeMs = duration<double, milli>(end - start).count();
+        results.stdPtr.timeMs = std::chrono::duration<double, std::milli>(end - start).count();
         results.stdPtr.memoryBytes = memAfter - memBefore;
 
         delete[] arr;
@@ -101,17 +99,17 @@ TestSuiteResult RunUniqueBenchmark(size_t iterations) {
     {
         UniquePtr<int>* arr = new UniquePtr<int>[iterations];
 
-        size_t memBefore = g_memory_allocated;
-        auto start = high_resolution_clock::now();
+        std::size_t memBefore = g_memory_allocated;
+        auto start = std::chrono::high_resolution_clock::now();
 
-        for (size_t i = 0; i < iterations; ++i) {
+        for (std::size_t i = 0; i < iterations; ++i) {
             arr[i] = UniquePtr<int>(new int(i));
         }
 
-        auto end = high_resolution_clock::now();
-        size_t memAfter = g_memory_allocated;
+        auto end = std::chrono::high_resolution_clock::now();
+        std::size_t memAfter = g_memory_allocated;
 
-        results.customPtr.timeMs = duration<double, milli>(end - start).count();
+        results.customPtr.timeMs = std::chrono::duration<double, std::milli>(end - start).count();
         results.customPtr.memoryBytes = memAfter - memBefore;
 
         delete[] arr;
@@ -123,7 +121,7 @@ TestSuiteResult RunUniqueBenchmark(size_t iterations) {
 // ============================================================================
 // SHARED POINTER BENCHMARKS
 // ============================================================================
-TestSuiteResult RunSharedBenchmark(size_t iterations) {
+TestSuiteResult RunSharedBenchmark(std::size_t iterations) {
     TestSuiteResult results;
 
     // 1. Raw Pointer Test (Simulating shared behavior without ref counting)
@@ -131,23 +129,23 @@ TestSuiteResult RunSharedBenchmark(size_t iterations) {
         int** arr = new int*[iterations];
         int** copies = new int*[iterations];
 
-        size_t memBefore = g_memory_allocated;
-        auto start = high_resolution_clock::now();
+        std::size_t memBefore = g_memory_allocated;
+        auto start = std::chrono::high_resolution_clock::now();
 
-        for (size_t i = 0; i < iterations; ++i) {
+        for (std::size_t i = 0; i < iterations; ++i) {
             arr[i] = new int(i);
         }
-        for (size_t i = 0; i < iterations; ++i) {
+        for (std::size_t i = 0; i < iterations; ++i) {
             copies[i] = arr[i]; // Manual copy, zero overhead
         }
 
-        auto end = high_resolution_clock::now();
-        size_t memAfter = g_memory_allocated;
+        auto end = std::chrono::high_resolution_clock::now();
+        std::size_t memAfter = g_memory_allocated;
 
-        results.rawPtr.timeMs = duration<double, milli>(end - start).count();
+        results.rawPtr.timeMs = std::chrono::duration<double, std::milli>(end - start).count();
         results.rawPtr.memoryBytes = memAfter - memBefore;
 
-        for (size_t i = 0; i < iterations; ++i) {
+        for (std::size_t i = 0; i < iterations; ++i) {
             delete arr[i];
         }
         delete[] arr;
@@ -159,20 +157,20 @@ TestSuiteResult RunSharedBenchmark(size_t iterations) {
         std::shared_ptr<int>* arr = new std::shared_ptr<int>[iterations];
         std::shared_ptr<int>* copies = new std::shared_ptr<int>[iterations];
 
-        size_t memBefore = g_memory_allocated;
-        auto start = high_resolution_clock::now();
+        std::size_t memBefore = g_memory_allocated;
+        auto start = std::chrono::high_resolution_clock::now();
 
-        for (size_t i = 0; i < iterations; ++i) {
+        for (std::size_t i = 0; i < iterations; ++i) {
             arr[i] = std::make_shared<int>(i);
         }
-        for (size_t i = 0; i < iterations; ++i) {
+        for (std::size_t i = 0; i < iterations; ++i) {
             copies[i] = arr[i]; // Triggers atomic ref count increment
         }
 
-        auto end = high_resolution_clock::now();
-        size_t memAfter = g_memory_allocated;
+        auto end = std::chrono::high_resolution_clock::now();
+        std::size_t memAfter = g_memory_allocated;
 
-        results.stdPtr.timeMs = duration<double, milli>(end - start).count();
+        results.stdPtr.timeMs = std::chrono::duration<double, std::milli>(end - start).count();
         results.stdPtr.memoryBytes = memAfter - memBefore;
 
         delete[] arr;
@@ -184,20 +182,20 @@ TestSuiteResult RunSharedBenchmark(size_t iterations) {
         SharedPtr<int>* arr = new SharedPtr<int>[iterations];
         SharedPtr<int>* copies = new SharedPtr<int>[iterations];
 
-        size_t memBefore = g_memory_allocated;
-        auto start = high_resolution_clock::now();
+        std::size_t memBefore = g_memory_allocated;
+        auto start = std::chrono::high_resolution_clock::now();
 
-        for (size_t i = 0; i < iterations; ++i) {
+        for (std::size_t i = 0; i < iterations; ++i) {
             arr[i] = SharedPtr<int>(new int(i));
         }
-        for (size_t i = 0; i < iterations; ++i) {
+        for (std::size_t i = 0; i < iterations; ++i) {
             copies[i] = arr[i]; // Triggers our custom ref count increment
         }
 
-        auto end = high_resolution_clock::now();
-        size_t memAfter = g_memory_allocated;
+        auto end = std::chrono::high_resolution_clock::now();
+        std::size_t memAfter = g_memory_allocated;
 
-        results.customPtr.timeMs = duration<double, milli>(end - start).count();
+        results.customPtr.timeMs = std::chrono::duration<double, std::milli>(end - start).count();
         results.customPtr.memoryBytes = memAfter - memBefore;
 
         delete[] arr;
@@ -210,75 +208,75 @@ TestSuiteResult RunSharedBenchmark(size_t iterations) {
 // ============================================================================
 // CLI INTERFACE & TABLE RENDERING
 // ============================================================================
-void PrintResults(const string& testName, size_t iterations, const TestSuiteResult& res) {
-    auto toMB = [](size_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1024.0); };
+void PrintResults(const std::string& testName, std::size_t iterations, const TestSuiteResult& res) {
+    auto toMB = [](std::size_t bytes) { return static_cast<double>(bytes) / (1024.0 * 1024.0); };
 
-    cout << "\n===============================================================================\n";
-    cout << " TEST: " << testName << " | ALLOCATIONS: " << iterations << "\n";
-    cout << "===============================================================================\n";
-    cout << left << setw(25) << "Pointer Type"
-         << right << setw(20) << "Time Executed"
-         << right << setw(30) << "Heap Memory Allocated" << "\n";
-    cout << "-------------------------------------------------------------------------------\n";
+    std::cout << "\n===============================================================================\n";
+    std::cout << " TEST: " << testName << " | ALLOCATIONS: " << iterations << "\n";
+    std::cout << "===============================================================================\n";
+    std::cout << std::left << std::setw(25) << "Pointer Type"
+              << std::right << std::setw(20) << "Time Executed"
+              << std::right << std::setw(30) << "Heap Memory Allocated" << "\n";
+    std::cout << "-------------------------------------------------------------------------------\n";
 
-    cout << left << setw(25) << "1. Raw Pointer (T*)"
-         << right << setw(17) << fixed << setprecision(2) << res.rawPtr.timeMs << " ms"
-         << right << setw(27) << fixed << setprecision(2) << toMB(res.rawPtr.memoryBytes) << " MB\n";
+    std::cout << std::left << std::setw(25) << "1. Raw Pointer (T*)"
+              << std::right << std::setw(17) << std::fixed << std::setprecision(2) << res.rawPtr.timeMs << " ms"
+              << std::right << std::setw(27) << std::fixed << std::setprecision(2) << toMB(res.rawPtr.memoryBytes) << " MB\n";
 
-    cout << left << setw(25) << "2. std:: STL Pointer"
-         << right << setw(17) << fixed << setprecision(2) << res.stdPtr.timeMs << " ms"
-         << right << setw(27) << fixed << setprecision(2) << toMB(res.stdPtr.memoryBytes) << " MB\n";
+    std::cout << std::left << std::setw(25) << "2. std:: STL Pointer"
+              << std::right << std::setw(17) << std::fixed << std::setprecision(2) << res.stdPtr.timeMs << " ms"
+              << std::right << std::setw(27) << std::fixed << std::setprecision(2) << toMB(res.stdPtr.memoryBytes) << " MB\n";
 
-    cout << left << setw(25) << "3. Custom Ptr"
-         << right << setw(17) << fixed << setprecision(2) << res.customPtr.timeMs << " ms"
-         << right << setw(27) << fixed << setprecision(2) << toMB(res.customPtr.memoryBytes) << " MB\n";
+    std::cout << std::left << std::setw(25) << "3. Custom Ptr"
+              << std::right << std::setw(17) << std::fixed << std::setprecision(2) << res.customPtr.timeMs << " ms"
+              << std::right << std::setw(27) << std::fixed << std::setprecision(2) << toMB(res.customPtr.memoryBytes) << " MB\n";
 
-    cout << "===============================================================================\n";
+    std::cout << "===============================================================================\n";
 }
 
 int main() {
     int choice = 0;
     while (true) {
-        cout << "\n[ SMART POINTERS PERFORMANCE BENCHMARK ]\n";
-        cout << "1. UniquePtr - Medium Load  (100,000 objects)\n";
-        cout << "2. UniquePtr - Heavy Load   (1,000,000 objects)\n";
-        cout << "3. UniquePtr - Extreme Load (10,000,000 objects)\n";
-        cout << "4. SharedPtr - Medium Load  (100,000 objects)\n";
-        cout << "5. SharedPtr - Heavy Load   (1,000,000 objects)\n";
-        cout << "6. SharedPtr - Extreme Load (10,000,000 objects)\n";
-        cout << "7. Exit\n";
-        cout << "> Select an option: ";
+        std::cout << "\n[ SMART POINTERS PERFORMANCE BENCHMARK ]\n";
+        std::cout << "1. UniquePtr - Medium Load  (100,000 objects)\n";
+        std::cout << "2. UniquePtr - Heavy Load   (1,000,000 objects)\n";
+        std::cout << "3. UniquePtr - Extreme Load (10,000,000 objects)\n";
+        std::cout << "4. SharedPtr - Medium Load  (100,000 objects)\n";
+        std::cout << "5. SharedPtr - Heavy Load   (1,000,000 objects)\n";
+        std::cout << "6. SharedPtr - Extreme Load (10,000,000 objects)\n";
+        std::cout << "7. Exit\n";
+        std::cout << "> Select an option: ";
 
-        if (!(cin >> choice)) break;
+        if (!(std::cin >> choice)) break;
 
         switch (choice) {
             case 1:
                 PrintResults("UniquePtr (Medium)", 100'000, RunUniqueBenchmark(100'000));
                 break;
             case 2:
-                cout << "Processing 1 million allocations...\n";
+                std::cout << "Processing 1 million allocations...\n";
                 PrintResults("UniquePtr (Heavy)", 1'000'000, RunUniqueBenchmark(1'000'000));
                 break;
             case 3:
-                cout << "Processing 10 million allocations, please wait...\n";
+                std::cout << "Processing 10 million allocations, please wait...\n";
                 PrintResults("UniquePtr (Extreme)", 10'000'000, RunUniqueBenchmark(10'000'000));
                 break;
             case 4:
                 PrintResults("SharedPtr (Medium)", 100'000, RunSharedBenchmark(100'000));
                 break;
             case 5:
-                cout << "Processing 1 million allocations...\n";
+                std::cout << "Processing 1 million allocations...\n";
                 PrintResults("SharedPtr (Heavy)", 1'000'000, RunSharedBenchmark(1'000'000));
                 break;
             case 6:
-                cout << "Processing 10 million allocations, please wait...\n";
+                std::cout << "Processing 10 million allocations, please wait...\n";
                 PrintResults("SharedPtr (Extreme)", 10'000'000, RunSharedBenchmark(10'000'000));
                 break;
             case 7:
-                cout << "Exiting benchmark tool.\n";
+                std::cout << "Exiting benchmark tool.\n";
                 return 0;
             default:
-                cout << "Invalid selection. Try again.\n";
+                std::cout << "Invalid selection. Try again.\n";
         }
     }
     return 0;
